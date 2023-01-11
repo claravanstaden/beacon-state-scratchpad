@@ -2,7 +2,10 @@ module github.com/claravanstaden/beacon-state-scratchpad
 
 go 1.19
 
-require github.com/prysmaticlabs/prysm/v3 v3.2.0
+require (
+	github.com/ferranbt/fastssz v0.1.2
+	github.com/prysmaticlabs/prysm/v3 v3.2.0
+)
 
 require (
 	github.com/btcsuite/btcd/btcec/v2 v2.2.1 // indirect

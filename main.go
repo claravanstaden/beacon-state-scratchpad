@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	ssz "github.com/ferranbt/fastssz/spectests"
 	eth "github.com/prysmaticlabs/prysm/v3/proto/prysm/v1alpha1"
 )
 
@@ -27,15 +28,43 @@ func main() {
 
 	state := eth.BeaconStateBellatrix{}
 
-	err = state.UnmarshalSSZ(dat)
+	//err = state.UnmarshalSSZ(dat)
+	//if err != nil {
+	//	log.Fatal(err)
+	//	return
+	//}
+
+	fmt.Println(state.Slot)
+	elapsed := time.Since(start)
+	log.Printf("took %s", elapsed)
+
+	sszState := ssz.BeaconStateBellatrix{}
+
+	err = sszState.UnmarshalSSZ(dat)
 	if err != nil {
 		log.Fatal(err)
 		return
 	}
 
-	fmt.Println(state.Slot)
-	elapsed := time.Since(start)
-	log.Printf("took %s", elapsed)
+	log.Printf("unmarshal done %s", elapsed)
+
+	tree, err := sszState.GetTree()
+	if err != nil {
+		return
+	}
+
+	log.Printf("get tree done %s", elapsed)
+
+	result, err := tree.Get(303104)
+	if err != nil {
+		return
+	}
+
+	log.Printf("get result done %s", elapsed)
+
+	fmt.Println(result.Hash())
+	fmt.Println(sszState.Slot)
+	fmt.Println(sszState.Slot)
 }
 
 func getSSZFileLodestar() error {
