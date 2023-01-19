@@ -1,8 +1,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
-	ssz "github.com/ferranbt/fastssz/spectests"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/pkg/errors"
+	"github.com/prysmaticlabs/prysm/v3/config/params"
+	"github.com/prysmaticlabs/prysm/v3/encoding/ssz/detect"
+	"github.com/prysmaticlabs/prysm/v3/runtime/version"
+
 	"io"
 	"log"
 	"net/http"
@@ -10,38 +16,61 @@ import (
 )
 
 func main() {
-	dat, err := os.ReadFile("beacon_state_prysm.ssz")
+	data, err := os.ReadFile("beacon_state_prysm.ssz")
 	if err != nil {
 		log.Fatal(err)
 		return
 	}
 
-	log.Printf("read file")
-
-	sszState := ssz.BeaconStateBellatrix{}
-	err = sszState.UnmarshalSSZ(dat)
+	err = loadBeaconState(data)
 	if err != nil {
 		log.Fatal(err)
-		return
 	}
+}
 
-	log.Printf("unmarshal done")
+func loadBeaconState(data []byte) error {
+	praterConfig := params.PraterConfig()
 
-	tree, err := sszState.GetTree()
+	params.OverrideBeaconConfig(praterConfig)
+
+	cf, err := detect.FromState(data)
 	if err != nil {
-		return
+		return errors.Wrap(err, "could not sniff config+fork for origin state bytes")
 	}
 
-	log.Printf("get tree done")
+	config := params.BeaconConfig()
 
-	result, err := tree.Get(303104)
+	fmt.Printf(config.ConfigName)
+
+	_, ok := params.BeaconConfig().ForkVersionSchedule[cf.Version]
+	if !ok {
+		return fmt.Errorf("config mismatch, beacon node configured to connect to %s, detected state is for %s", params.BeaconConfig().ConfigName, cf.Config.ConfigName)
+	}
+
+	log.Printf("detected supported config for state & block version, config name=%s, fork name=%s", cf.Config.ConfigName, version.String(cf.Fork))
+	state, err := cf.UnmarshalBeaconState(data)
 	if err != nil {
-		return
+		return errors.Wrap(err, "failed to initialize origin state w/ bytes + config+fork")
 	}
 
-	log.Printf("get index at tree done")
+	stateHash, err := state.HashTreeRoot(context.Background())
+	if err != nil {
+		return errors.Wrap(err, "unable to hash tree root")
+	}
 
-	fmt.Println(result.Hash())
+	fmt.Printf("leaf: %s\n", common.BytesToHash(state.FinalizedCheckpoint().Root))
+	fmt.Printf("root: %s\n", common.BytesToHash(stateHash[:]))
+
+	proof, err := state.FinalizedRootProof(context.Background())
+	if err != nil {
+		return err
+	}
+
+	for _, proofItem := range proof {
+		fmt.Printf("proofitem: %s\n", common.BytesToHash(proofItem))
+	}
+
+	return nil
 }
 
 func getSSZFileLodestar() error {
