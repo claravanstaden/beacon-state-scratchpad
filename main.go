@@ -16,19 +16,72 @@ import (
 )
 
 func main() {
-	data, err := os.ReadFile("beacon_state_prysm.ssz")
-	if err != nil {
-		log.Fatal(err)
-		return
-	}
-
-	err = loadBeaconState(data)
+	err := loadBeaconStateLocalnet()
 	if err != nil {
 		log.Fatal(err)
 	}
 }
 
-func loadBeaconState(data []byte) error {
+func loadBeaconStateLocalnet() error {
+	data, err := os.ReadFile("beacon_state_lodestar_localnet.ssz")
+	if err != nil {
+		return errors.Wrap(err, "could not open beacon state file")
+	}
+
+	localNetConfig := params.MinimalSpecConfig()
+
+	localNetConfig.SlotsPerEpoch = 4
+	localNetConfig.EpochsPerSyncCommitteePeriod = 8
+	localNetConfig.SyncCommitteeSize = 32
+
+	params.OverrideBeaconConfig(localNetConfig)
+
+	cf, err := detect.FromState(data)
+	if err != nil {
+		return errors.Wrap(err, "could not sniff config+fork for origin state bytes")
+	}
+
+	config := params.BeaconConfig()
+
+	fmt.Printf(config.ConfigName)
+
+	_, ok := params.BeaconConfig().ForkVersionSchedule[cf.Version]
+	if !ok {
+		return fmt.Errorf("config mismatch, beacon node configured to connect to %s, detected state is for %s", params.BeaconConfig().ConfigName, cf.Config.ConfigName)
+	}
+
+	log.Printf("detected supported config for state & block version, config name=%s, fork name=%s", cf.Config.ConfigName, version.String(cf.Fork))
+	state, err := cf.UnmarshalBeaconState(data)
+	if err != nil {
+		return errors.Wrap(err, "failed to initialize origin state w/ bytes + config+fork")
+	}
+
+	stateHash, err := state.HashTreeRoot(context.Background())
+	if err != nil {
+		return errors.Wrap(err, "unable to hash tree root")
+	}
+
+	fmt.Printf("leaf: %s\n", common.BytesToHash(state.FinalizedCheckpoint().Root))
+	fmt.Printf("root: %s\n", common.BytesToHash(stateHash[:]))
+
+	proof, err := state.FinalizedRootProof(context.Background())
+	if err != nil {
+		return err
+	}
+
+	for _, proofItem := range proof {
+		fmt.Printf("proofitem: %s\n", common.BytesToHash(proofItem))
+	}
+
+	return nil
+}
+
+func loadBeaconStateGoerli() error {
+	data, err := os.ReadFile("beacon_state_prysm.ssz")
+	if err != nil {
+		return errors.Wrap(err, "could not open beacon state file")
+	}
+
 	praterConfig := params.PraterConfig()
 
 	params.OverrideBeaconConfig(praterConfig)
